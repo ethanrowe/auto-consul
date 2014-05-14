@@ -1,5 +1,13 @@
 require 'spec-helper'
 
+shared_examples_for 'a heartbeat emitter' do
+  it 'should write a TIMESTAMP-IDENTIFIER entry under the key prefix with the payload as data.' do
+    bucket_object.should_receive(:[]).with(File.join(path, "#{stamp}-#{identity}")).and_return(obj = double)
+    obj.should_receive(:write).with(payload = "Some payload data #{double.to_s}")
+    subject.heartbeat! identity, payload, expiry
+  end
+end
+
 shared_examples_for 'has valid members' do |locator_pairs|
   let :member_pairs do
     locator_pairs.collect do |time_sym, identifier|
@@ -83,10 +91,44 @@ describe AutoConsul::Cluster::Registry::S3Provider do
           Time.stub(:now).with.and_return(t)
         end
 
-        it 'should write a TIMESTAMP-IDENTIFIER entry under the key prefix with the payload as data.' do
-          bucket_object.should_receive(:[]).with(File.join(path, "#{stamp}-#{identity}")).and_return(obj = double)
-          obj.should_receive(:write).with(payload = "Some payload data #{double.to_s}")
-          subject.heartbeat! identity, payload
+        describe 'with no expiry' do
+          let(:expiry) { nil }
+
+          before do
+            bucket.should_not_receive(:with_prefix)
+            bucket.should_not_receive(:delete_if)
+            bucket.should_not_receive(:delete)
+          end
+
+          it_should_behave_like 'a heartbeat emitter'
+        end
+
+        describe 'with an expiry' do
+          let(:expiry) { 145.to_i }
+          let(:check_time) { time.dup.utc - expiry }
+
+          let :pre_expiration do
+            double "S3Object", :key => File.join(path, "#{(check_time - 1).strftime('%Y%m%d%H%M%S')}-foo")
+          end
+
+          let :on_expiration do
+            double "S3Object", :key => File.join(path, "#{check_time.strftime('%Y%m%d%H%M%S')}-bar")
+          end
+
+          let :post_expiration do
+            double "S3Object", :key => File.join(path, "#{(check_time + 1).strftime('%Y%m%d%H%M%S')}-baz")
+          end
+
+          before do
+            bucket_object.should_receive(:with_prefix).with(path).and_return(with_pre = double)
+            with_pre.should_receive(:delete_if) do |&block|
+              block.call(pre_expiration).should be_true
+              block.call(post_expiration).should be_false
+              block.call(on_expiration).should be_true
+            end
+          end
+
+          it_should_behave_like 'a heartbeat emitter'
         end
       end
 

@@ -68,8 +68,17 @@ module AutoConsul::Cluster::Registry
       File.join(key_prefix, self.class.to_key_base(time, identity))
     end
 
-    def heartbeat! identity, data
-      bucket[write_key now, identity].write data
+    def heartbeat! identity, data, expiry=nil
+      result = bucket[write_key now, identity].write data
+      purge!(expiry) unless expiry.nil?
+      result
+    end
+
+    def purge! expiry
+      min_key = File.join(key_prefix, "#{self.class.write_stamp(Time.now - expiry + 1)}-")
+      bucket.with_prefix(key_prefix).delete_if do |s3obj|
+        s3obj.key < min_key
+      end
     end
 
     def members expiry
