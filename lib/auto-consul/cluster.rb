@@ -1,10 +1,24 @@
 require 'uri'
 
 module AutoConsul
-  module Cluster
+  class Cluster
     def self.get_provider_for_uri uri_string
       uri = URI(uri_string)
       Registry.supported_schemes[uri.scheme.downcase].new uri
+    end
+
+    attr_reader :uri_string
+
+    def initialize uri
+      @uri_string = uri
+    end
+
+    def servers
+      @servers ||= self.class.get_provider_for_uri File.join(uri_string, 'servers')
+    end
+
+    def agents
+      @agents ||= self.class.get_provider_for_uri File.join(uri_string, 'agents')
     end
 
     module Registry
