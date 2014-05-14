@@ -1,0 +1,51 @@
+WARNING: It is highly recommended to set GOMAXPROCS higher than 1
+
+agent:
+	check_monitors = 0
+	check_ttls = 0
+	checks = 0
+	services = 0
+consul:
+	bootstrap = true
+	known_datacenters = 1
+	leader = true
+	server = true
+raft:
+	applied_index = 1082
+	commit_index = 1082
+	fsm_pending = 0
+	last_contact = never
+	last_log_index = 1082
+	last_log_term = 3
+	last_snapshot_index = 0
+	last_snapshot_term = 0
+	num_peers = 0
+	state = Leader
+	term = 3
+runtime:
+	arch = amd64
+	cpu_count = 1
+	goroutines = 57
+	max_procs = 1
+	os = linux
+	version = go1.2.1
+serf_lan:
+	event_queue = 1
+	event_time = 3
+	failed = 0
+	intent_queue = 0
+	left = 0
+	member_time = 1
+	members = 1
+	query_queue = 0
+	query_time = 1
+serf_wan:
+	event_queue = 0
+	event_time = 1
+	failed = 0
+	intent_queue = 0
+	left = 0
+	member_time = 1
+	members = 1
+	query_queue = 0
+	query_time = 1
