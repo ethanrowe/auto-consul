@@ -37,7 +37,7 @@ module AutoConsul::Cluster::Registry
     end
 
     def key_prefix
-      uri.path
+      uri.path[1..-1]
     end
 
     def now

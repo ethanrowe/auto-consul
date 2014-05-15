@@ -37,8 +37,8 @@ end
 describe AutoConsul::Cluster::Registry::S3Provider do
   let(:provider) { AutoConsul::Cluster::Registry::S3Provider }
   let(:bucket) { "bucket-#{self.object_id.to_s}" }
-  let(:path) { "/#{self.object_id.to_s}/foo/bar" }
-  let(:uri) { "s3://#{bucket}#{path}" }
+  let(:path) { "#{self.object_id.to_s}/foo/bar" }
+  let(:uri) { "s3://#{bucket}/#{path}" }
 
   context 'retrieved via AutoConsul::Cluster.get_provider_for_uri' do
     it 'should be the provider for an s3:// URL' do
