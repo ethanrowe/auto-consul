@@ -2,7 +2,7 @@ require 'spec-helper'
 
 shared_examples_for 'a heartbeat emitter' do
   it 'should write a TIMESTAMP-IDENTIFIER entry under the key prefix with the payload as data.' do
-    bucket_object.should_receive(:[]).with(File.join(path, "#{stamp}-#{identity}")).and_return(obj = double)
+    objects.should_receive(:[]).with(File.join(path, "#{stamp}-#{identity}")).and_return(obj = double)
     obj.should_receive(:write).with(payload = "Some payload data #{double.to_s}")
     subject.heartbeat! identity, payload, expiry
   end
@@ -71,6 +71,7 @@ describe AutoConsul::Cluster::Registry::S3Provider do
 
     context 'with a bucket' do
       let(:bucket_object) { double }
+      let(:objects) { double }
       let(:time) do
         t = Time.now.utc
         Time.utc t.year, t.month, t.day, t.hour, t.min, t.sec, 0
@@ -80,6 +81,7 @@ describe AutoConsul::Cluster::Registry::S3Provider do
 
       before do
         subject.stub(:bucket).with.and_return(bucket_object)
+        bucket_object.stub(:objects).with.and_return(objects)
       end
 
       describe 'the heartbeat method' do
@@ -95,9 +97,11 @@ describe AutoConsul::Cluster::Registry::S3Provider do
           let(:expiry) { nil }
 
           before do
-            bucket.should_not_receive(:with_prefix)
+            objects.should_not_receive(:with_prefix)
             bucket.should_not_receive(:delete_if)
+            objects.should_not_receive(:delete_if)
             bucket.should_not_receive(:delete)
+            objects.should_not_receive(:delete)
           end
 
           it_should_behave_like 'a heartbeat emitter'
@@ -120,7 +124,7 @@ describe AutoConsul::Cluster::Registry::S3Provider do
           end
 
           before do
-            bucket_object.should_receive(:with_prefix).with(path).and_return(with_pre = double)
+            objects.should_receive(:with_prefix).with(path).and_return(with_pre = double)
             with_pre.should_receive(:delete_if) do |&block|
               block.call(pre_expiration).should be_true
               block.call(post_expiration).should be_false
@@ -134,7 +138,7 @@ describe AutoConsul::Cluster::Registry::S3Provider do
 
       describe 'and no heartbeats' do
         before do
-          bucket_object.should_receive(:with_prefix).with(path).and_return(collection = double)
+          objects.should_receive(:with_prefix).with(path).and_return(collection = double)
           # Doesn't yield, and thus is "empty".
           collection.should_receive(:each).and_return(collection)
         end
@@ -149,7 +153,7 @@ describe AutoConsul::Cluster::Registry::S3Provider do
         end
 
         before do
-          with_pre = bucket_object.should_receive(:with_prefix).with(path).and_return(with_prefix_each = double)
+          with_pre = objects.should_receive(:with_prefix).with(path).and_return(with_prefix_each = double)
           with_prefix_each = with_prefix_each.should_receive(:each).with
           key_source.inject(with_prefix_each) do |o, pair|
             s3_cache[pair] = double("S3Object",
@@ -163,9 +167,9 @@ describe AutoConsul::Cluster::Registry::S3Provider do
 
         before do
           if deletes.size > 0
-            bucket_object.should_receive(:delete).with(deletes)
+            objects.should_receive(:delete).with(deletes)
           else
-            bucket_object.should_not_receive(:delete)
+            objects.should_not_receive(:delete)
           end
         end
 
