@@ -19,16 +19,14 @@ shared_examples_for 'a consul agent run' do |method_name, registry_name, join_fl
     AutoConsul::Runner.should_receive(:spawn).with(*expected_args).and_return(agent_pid = double)
 
     # consul info retries to verify that it's running.
-    AutoConsul::Runner.should_receive(:system).with(
-      ['consul', 'info']).and_return(false, false, true)
+    AutoConsul::Runner.should_receive(:system).with('consul', 'info').and_return(false, false, true)
 
     AutoConsul::Runner.should_receive(:sleep).with(2)
     AutoConsul::Runner.should_receive(:sleep).with(4)
     AutoConsul::Runner.should_receive(:sleep).with(6)
 
     if join_flag
-      AutoConsul::Runner.should_receive(:system).with(
-        ['consul', 'join', remote_ip]).and_return(true)
+      AutoConsul::Runner.should_receive(:system).with('consul', 'join', remote_ip).and_return(true)
     end
 
     Process.should_receive(:wait).with(agent_pid)

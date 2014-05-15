@@ -7,7 +7,7 @@ module AutoConsul
       pid = spawn(*(['consul', 'agent'] + agent_args))
 
       # We really need to check that is running, but later.
-      return false unless verify_running(pid)
+      return nil unless verify_running(pid)
 
       if not remote_ip.nil?
         join remote_ip
@@ -19,13 +19,13 @@ module AutoConsul
     def self.verify_running pid
       RETRIES.times do |i|
         sleep SLEEP_INTERVAL + (SLEEP_INTERVAL * i)
-        return true if system(['consul', 'info'])
+        return true if system('consul', 'info')
       end
       return false
     end
 
     def self.join remote_ip
-      system(['consul', 'join', remote_ip])
+      system('consul', 'join', remote_ip)
     end
 
     def self.pick_joining_host hosts
@@ -50,7 +50,7 @@ module AutoConsul
 
       pid = launch_and_join(args, remote_ip)
 
-      Process.wait pid
+      Process.wait pid unless pid.nil?
     end
   end
 end
