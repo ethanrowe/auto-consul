@@ -21,6 +21,14 @@ module AutoConsul
       @agents ||= self.class.get_provider_for_uri File.join(uri_string, 'agents')
     end
 
+    def set_mode! local_state, expiry, desired_servers=1
+      if servers.members(expiry).size < desired_servers
+        local_state.set_server!
+      else
+        local_state.set_agent!
+      end
+    end
+
     module Registry
       def self.supported_schemes
         constants.inject({}) do |a, const|
