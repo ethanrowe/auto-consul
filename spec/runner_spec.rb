@@ -16,7 +16,7 @@ shared_examples_for 'a consul agent run' do |method_name, registry_name, join_fl
                       end
                     end
 
-    AutoConsul::Runner.should_receive(:spawn).with(expected_args).and_return(agent_pid = double)
+    AutoConsul::Runner.should_receive(:spawn).with(*expected_args).and_return(agent_pid = double)
 
     # consul info retries to verify that it's running.
     AutoConsul::Runner.should_receive(:system).with(

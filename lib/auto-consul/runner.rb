@@ -4,7 +4,7 @@ module AutoConsul
     RETRIES = 5
 
     def self.launch_and_join(agent_args, remote_ip=nil)
-      pid = spawn(['consul', 'agent'] + agent_args)
+      pid = spawn(*(['consul', 'agent'] + agent_args))
 
       # We really need to check that is running, but later.
       return false unless verify_running(pid)
