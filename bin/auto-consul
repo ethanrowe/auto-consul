@@ -1,0 +1,110 @@
+#!/usr/bin/env ruby
+
+# vim: set filetype=ruby;
+
+require 'auto-consul'
+require 'optparse'
+require 'socket'
+require 'ostruct'
+
+class UnknownCommandException < Exception
+end
+
+class Command < OpenStruct
+  def local
+    @local ||= AutoConsul::Local.bind_to_path(data)
+  end
+
+  def cluster
+    @cluster ||= AutoConsul::Cluster.new registry
+  end
+
+  def state
+    @state ||= AutoConsul::RunState::CLIProvider.new
+  end
+
+  def do_set_mode
+    cluster.set_mode! local, expiry, servers
+  end
+
+  def do_run
+    if local.mode.nil?
+      do_set_mode
+    end
+    do_direct_run
+  end
+
+  def do_direct_run
+    runner = :no_op
+    runner = :run_agent! if local.agent?
+    runner = :run_server! if local.server?
+    runner = AutoConsul::Runner.method(runner)
+    runner.call node, addr, expiry, local, cluster
+  end
+
+  def do_heartbeat
+    if state.running?
+      cluster.servers.heartbeat! node, addr, expiry if state.server?
+      cluster.agents.heartbeat! node, addr, expiry if state.agent?
+    end
+  end
+
+  def execute cmd
+    command = "do_#{cmd}".to_sym
+    if respond_to? command
+      send command
+    else
+      raise UnknownCommandException.new("Unknown command: #{cmd}")
+    end
+  end
+end
+
+runner = Command.new(:data    => '/tmp/consul/state',
+                     :dc      => 'dc1',
+                     :expiry  => 120,
+                     :servers => 1,
+                     :node    => Socket.gethostname.split('.', 2)[0])
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: auto-consul [options] COMMAND"
+
+  opts.on("-r", "--registry URL", String, "The cluster registry URL") do |u|
+    runner.registry = u
+  end
+
+  opts.on("-d", "--data-dir PATH", String, "The path where local state will be preserved.") do |d|
+    runner.data_dir = d
+  end
+
+  opts.on("-a", "--address IPADDR", String, "The IP address to bind to and announce for cluster communication.") do |a|
+    runner.addr = a
+  end
+
+  opts.on("-n", "--node NAME", String, "The unique name by which the node identifies itself within the cluster.") do |n|
+    runner.node = n
+  end
+
+  opts.on("-e", "--expiry SECONDS", Integer, "The expiration time (in seconds) for registry heartbeats") do |e|
+    runner.expiry = e.to_i
+  end
+
+  opts.on("-s", "--servers NUMBER", Integer, "The desired number of consul servers.") do |s|
+    runner.servers = s.to_i
+  end
+
+  opts.on_tail('-h', '--help', "Show this help message.") do
+    puts opts
+    exit
+  end
+end
+
+parser.parse!
+
+begin
+  runner.execute(ARGV.shift)
+rescue UnknownCommandException => e
+  puts e.message
+  puts parser
+  exit 2
+end
+

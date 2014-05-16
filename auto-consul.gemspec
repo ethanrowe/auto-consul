@@ -1,3 +1,4 @@
+require 'rake'
 Gem::Specification.new do |s|
   s.name        = 'auto-consul'
   s.description = 'Ruby utilities to aid in the bootstrapping of EC2-based consul clusters'
@@ -7,6 +8,7 @@ Gem::Specification.new do |s|
   s.platform    = Gem::Platform::RUBY
   s.summary     = s.description
   s.license     = 'MIT'
+  s.version     = '0.0.1'
 
   s.files       = FileList['lib/**/*.rb', 'spec/**/*.rb', 'bin/*', '[A-Z]*'].to_a
   s.executables << 'auto-consul'
