@@ -18,15 +18,13 @@ This will allow the AWS SDK to pick them up.
 
 The server, screen A:
 
-    ```
     auto-consul -r s3://my-bucket/consul/test-cluster \
                 -a 192.168.50.100 \
                 -n server1 \
                 run
-    ```
 
 Then, server screen B:
-    ```
+
     while true; do
         auto-consul -r s3://my-bucket/consul/test-cluster \
                     -a 192.168.50.100 \
@@ -34,7 +32,6 @@ Then, server screen B:
                     heartbeat
         sleep 60
     done
-    ```
 
 The first launches the agent, the latter checks its run status and
 issues a heartbeat to the specified S3 bucket.
@@ -52,12 +49,10 @@ members of the cluster for joining.
 Having seen the server heartbeat, go to the agent vagrant box, and
 do something similar.  Screen A:
 
-    ```
     auto-consul -r s3://my-bucket/consul/test-cluster \
                 -a 192.168.50.101 \
                 -n agent1 \
                 run
-    ```
 
 In this case, the agent will discover the server via its heartbeat.  It
 will know that we have enough servers (it defaults to only wanting one;
@@ -65,7 +60,7 @@ that's fine for dev/testing but not good for availability) and thus
 simply join as a normal agent.
 
 Screen B:
-    ```
+
     while true; do
         auto-consul -r s3://my-bucket/consul/test-cluster \
                     -a 192.168.50.101 \
@@ -73,7 +68,6 @@ Screen B:
                     heartbeat
         sleep 60
     done
-    ```
 
 This generates heartbeats like the server did, but while the server
 sends heartbeats both to "servers" and "agents" in the bucket, the
@@ -85,10 +79,10 @@ Given a desired number of servers (defaulting to 1) and a registry
 (for now, an S3-style URL), the basic algorithm is:
 
 - Are there enough servers?
-- Yes: Be an agent.  Done.
-- No: are there no servers?
--- Yes: Be a server with bootstrap mode.  Done.
--- Yes: Be a server without bootstrap mode.  Done.
+  - Yes: Be an agent.  Done.
+  - No: are there no servers?
+    - Yes: Be a server with bootstrap mode.  Done.
+    - No: Be a server without bootstrap mode, joining with others.  Done.
 
 There is very obviously a race condition in the determination of node
 mode.  In practice, it should be easy enough to coordinate things such
