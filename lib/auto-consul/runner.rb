@@ -1,7 +1,72 @@
 module AutoConsul
   module Runner
+    INITIAL_VERIFY_SLEEP = 0.1
     SLEEP_INTERVAL = 2
     RETRIES = 5
+
+    class AgentProcess
+      attr_reader :args
+      attr_reader :exit_code
+      attr_reader :pid
+      attr_reader :status
+      attr_reader :thread
+
+      def initialize args
+        @args = args.dup.freeze
+        @callbacks = {}
+      end
+
+      def on_up &action
+        register_callback :up, &action
+      end
+
+      def launch!
+        set_status :starting
+        @thread = Thread.new do
+          run_agent
+        end
+      end
+
+      def run_agent
+        @pid = spawn(['consul', 'agent'] + args)
+        result = Process.waitpid2(@pid)
+        @exit_code = result[1].exitstatus
+        set_status :down
+      end
+
+      VALID_VERIFY_STATUSES = [nil, :starting]
+
+      def verify_up!
+        sleep INITIAL_VERIFY_SLEEP
+        tries = 0
+        while VALID_VERIFY_STATUSES.include?(status) and tries < RETRIES
+          sleep SLEEP_INTERVAL ** tries if tries > 0
+          if system('consul', 'info')
+            set_status :up
+          else
+            tries += 1
+          end
+        end
+      end
+
+      def register_callback on_status, &action
+        (@callbacks[on_status] ||= []) << action
+      end
+
+      def run_callbacks on_status
+        if callbacks = @callbacks[on_status]
+          callbacks.each do |callback|
+            callback.call self
+          end
+        end
+      end
+
+      def set_status new_status
+        @status = new_status
+        run_callbacks new_status
+        new_status
+      end
+    end
 
     def self.launch_and_join(agent_args, remote_ip=nil)
       pid = spawn(*(['consul', 'agent'] + agent_args))
