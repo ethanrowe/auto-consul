@@ -298,6 +298,31 @@ describe AutoConsul::Runner::AgentProcess do
     end
   end
 
+  describe ':run! method' do
+    it 'launches, then verifies up, and returns status' do
+      status = double('Status')
+      expect(subject).to receive(:launch!).with.ordered
+      expect(subject).to receive(:verify_up!).with.ordered
+      expect(subject).to receive(:status).with.ordered { status }
+      expect(subject.run!).to be(status)
+    end
+  end
+
+  describe ':wait method' do
+    it 'waits on the agent runner thread and returns the exit code' do
+      thread = double('Thread')
+      exit_code = double('ExitCode')
+      expect(subject).to receive(:thread).with.and_return { thread }
+      expect(thread).to receive(:join).with.and_return { thread }
+      expect(subject).to receive(:exit_code).with.and_return { exit_code }
+      expect(subject.wait).to be(exit_code)
+    end
+
+    it 'blows up if no thread is present' do
+      expect(subject).to receive(:thread).with.and_return { nil }
+      expect { subject.wait }.to raise_exception(/consul agent has not started/)
+    end
+  end
 end
 
 describe AutoConsul::Runner do

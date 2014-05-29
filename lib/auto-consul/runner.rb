@@ -72,6 +72,20 @@ module AutoConsul
         (@callbacks[on_status] ||= []) << action
       end
 
+      def run!
+        launch!
+        verify_up!
+        status
+      end
+
+      def wait
+        if (t = thread).nil?
+          raise "The consul agent has not started within this runner."
+        end
+        t.join
+        exit_code
+      end
+
       def run_callbacks on_status
         if callbacks = @callbacks[on_status]
           callbacks.each do |callback|
