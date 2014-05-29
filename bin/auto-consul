@@ -25,6 +25,8 @@ class Command < OpenStruct
 
   def do_set_mode
     cluster.set_mode! local, expiry, servers
+    # Healthy exit
+    0
   end
 
   def do_run
@@ -36,16 +38,24 @@ class Command < OpenStruct
 
   def do_direct_run
     runner = :no_op
-    runner = :run_agent! if local.agent?
-    runner = :run_server! if local.server?
+    runner = :agent_runner if local.agent?
+    runner = :server_runner if local.server?
     runner = AutoConsul::Runner.method(runner)
-    runner.call node, addr, expiry, local, cluster
+    monitor = runner.call(node, addr, expiry, local, cluster)
+    monitor.run!
+    # Returns the exit status of the "consul agent" run.
+    monitor.wait
   end
 
   def do_heartbeat
     if state.running?
       cluster.servers.heartbeat! node, addr, expiry if state.server?
       cluster.agents.heartbeat! node, addr, expiry if state.agent?
+      # Healthy exit.
+      0
+    else
+      # Not running; can't heartbeat.
+      1
     end
   end
 
@@ -101,7 +111,8 @@ end
 parser.parse!
 
 begin
-  runner.execute(ARGV.shift)
+  status = runner.execute(ARGV.shift)
+  exit status
 rescue UnknownCommandException => e
   puts e.message
   puts parser

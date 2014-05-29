@@ -101,17 +101,12 @@ module AutoConsul
       end
     end
 
-    def self.launch_and_join(agent_args, remote_ip=nil)
-      pid = spawn(*(['consul', 'agent'] + agent_args))
-
-      # We really need to check that is running, but later.
-      return nil unless verify_running(pid)
-
+    def self.joining_runner(agent_args, remote_ip=nil)
+      runner = AgentProcess.new(agent_args)
       if not remote_ip.nil?
-        join remote_ip
+        runner.on_up {|a| join remote_ip}
       end
-
-      pid
+      runner
     end
 
     def self.verify_running pid
@@ -131,24 +126,21 @@ module AutoConsul
       hosts[0].data
     end
 
-    def self.run_agent! identity, bind_ip, expiry, local_state, registry
+    def self.agent_runner identity, bind_ip, expiry, local_state, registry
       remote_ip = pick_joining_host(registry.agents.members(expiry))
-      pid = launch_and_join(['-bind', bind_ip,
-                             '-data-dir', local_state.data_path,
-                             '-node', identity], remote_ip)
-      Process.wait pid
+      joining_runner(['-bind', bind_ip,
+                      '-data-dir', local_state.data_path,
+                      '-node', identity], remote_ip)
     end
 
-    def self.run_server! identity, bind_ip, expiry, local_state, registry
+    def self.server_runner identity, bind_ip, expiry, local_state, registry
       members = registry.servers.members(expiry)
       remote_ip = members.size > 0 ? pick_joining_host(members) : nil
 
       args = ['-bind', bind_ip, '-data-dir', local_state.data_path, '-node', identity, '-server']
       args << '-bootstrap' if members.size < 1
 
-      pid = launch_and_join(args, remote_ip)
-
-      Process.wait pid unless pid.nil?
+      joining_runner(args, remote_ip)
     end
   end
 end

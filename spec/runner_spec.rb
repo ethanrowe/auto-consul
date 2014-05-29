@@ -57,7 +57,7 @@ shared_examples_for 'stop signaler' do
   end
 end
 
-shared_examples_for 'a consul agent run' do |method_name, registry_name, join_flag, args|
+shared_examples_for 'a consul agent process runner' do |method_name, registry_name, join_flag, args|
   it 'properly launches consul agent' do
     members = []
     members << member if join_flag
@@ -65,7 +65,7 @@ shared_examples_for 'a consul agent run' do |method_name, registry_name, join_fl
     registry.should_receive(registry_name).with.and_return(reg = double)
     reg.should_receive(:members).with(expiry).and_return(members)
 
-    expected_args = (['consul', 'agent', '-bind', ip, '-data-dir', data_dir, '-node', identity] + args).collect do |e|
+    expected_args = (['-bind', ip, '-data-dir', data_dir, '-node', identity] + args).collect do |e|
                       if e.instance_of? Symbol
                         send e
                       else
@@ -73,23 +73,22 @@ shared_examples_for 'a consul agent run' do |method_name, registry_name, join_fl
                       end
                     end
 
-    AutoConsul::Runner.should_receive(:spawn).with(*expected_args).and_return(agent_pid = double)
-
-    # consul info retries to verify that it's running.
-    AutoConsul::Runner.should_receive(:system).with('consul', 'info').and_return(false, false, true)
-
-    AutoConsul::Runner.should_receive(:sleep).with(2)
-    AutoConsul::Runner.should_receive(:sleep).with(4)
-    AutoConsul::Runner.should_receive(:sleep).with(6)
+    runner = double("AgentProcess")
+    expect(AutoConsul::Runner::AgentProcess).to receive(:new).with(expected_args).and_return { runner }
 
     if join_flag
-      AutoConsul::Runner.should_receive(:system).with('consul', 'join', remote_ip).and_return(true)
+      expect(AutoConsul::Runner).to receive(:system).with('consul', 'join', remote_ip).and_return(true)
+      expect(runner).to receive(:on_up) do |&action|
+        # The callback mechanism is how we join the cluster.
+        action.call
+      end
+    else
+      expect(AutoConsul::Runner).to_not receive(:system)
+      expect(runner).to_not receive(:on_up)
     end
 
-    Process.should_receive(:wait).with(agent_pid)
-
     callable = AutoConsul::Runner.method(method_name)
-    callable.call(identity, ip, expiry, local_state, registry)
+    expect(callable.call(identity, ip, expiry, local_state, registry)).to be(runner)
   end
 end
 
@@ -344,21 +343,21 @@ describe AutoConsul::Runner do
     registry.servers.stub(:servers).with(expiry).and_return(servers_list)
   end
 
-  describe :run_agent! do
-    it_behaves_like 'a consul agent run', :run_agent!, :agents, true, []
+  describe :agent_runner do
+    it_behaves_like 'a consul agent process runner', :agent_runner, :agents, true, []
   end
 
-  describe :run_server! do
+  describe :server_runner do
     describe 'with empty server registry' do
       # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -server -bootstrap
-      it_behaves_like 'a consul agent run', :run_server!, :servers, false, ['-server', '-bootstrap']
+      it_behaves_like 'a consul agent process runner', :server_runner, :servers, false, ['-server', '-bootstrap']
     end
 
     describe 'with other servers in registry' do
       # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -server
       # consul join some_ip
 
-      it_behaves_like 'a consul agent run', :run_server!, :servers, true, ['-server']
+      it_behaves_like 'a consul agent process runner', :server_runner, :servers, true, ['-server']
     end
   end
 end
