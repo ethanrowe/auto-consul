@@ -20,15 +20,20 @@ module AutoConsul
         register_callback :up, &action
       end
 
+      def on_down &action
+        register_callback :down, &action
+      end
+
       def launch!
         set_status :starting
         @thread = Thread.new do
+          Thread.current.abort_on_exception = true
           run_agent
         end
       end
 
       def run_agent
-        @pid = spawn(['consul', 'agent'] + args)
+        @pid = spawn(*(['consul', 'agent'] + args))
         result = Process.waitpid2(@pid)
         @exit_code = result[1].exitstatus
         set_status :down
@@ -47,6 +52,20 @@ module AutoConsul
             tries += 1
           end
         end
+      end
+
+      def on_stopping &action
+        register_callback :stopping, &action
+      end
+
+      VALID_STOP_STATUSES = [nil, :starting, :up, :stopping]
+      STOP_SIGNAL = "SIGINT"
+
+      def stop!
+        raise "The consul agent is not running (no pid)" if pid.nil?
+        raise "The consul agent is not running (status #{status.to_s})." unless VALID_STOP_STATUSES.include? status
+        set_status :stopping
+        Process.kill STOP_SIGNAL, pid
       end
 
       def register_callback on_status, &action

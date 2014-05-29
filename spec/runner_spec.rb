@@ -1,5 +1,62 @@
 require 'spec-helper'
 
+shared_examples_for 'an unstoppable' do
+  before do
+    subject.set_status initial_status
+  end
+
+  before do
+    Process.should_not_receive(:kill)
+    subject.should_not_receive(:set_status)
+  end
+
+  it 'throws an exception' do
+    expect { subject.stop! }.to raise_error(/consul agent is not running/)
+  end
+end
+
+shared_examples_for 'stop signaler' do
+  before do
+    subject.set_status initial_status
+  end
+
+  before do
+    Process.should_receive(:kill).with("SIGINT", pid)
+  end
+
+  describe 'with no stopping callbacks' do
+    before do
+      subject.should_not_receive(:stopping_a!)
+      subject.should_not_receive(:stopping_b!)
+    end
+
+    it 'signals the agent process to stop' do
+      subject.stop!
+    end
+  end
+
+  describe 'with stopping callbacks' do
+    before do
+      subject.on_stopping do |o|
+        subject.stopping_a! o
+        expect(subject.status).to eq(:stopping)
+      end
+
+      subject.on_stopping do |o|
+        subject.stopping_b! o
+        expect(subject.status).to eq(:stopping)
+      end
+
+      subject.should_receive(:stopping_a!).with(subject)
+      subject.should_receive(:stopping_b!).with(subject)
+    end
+
+    it 'invokes the callbacks and signals the agent process to stop' do
+      subject.stop!
+    end
+  end
+end
+
 shared_examples_for 'a consul agent run' do |method_name, registry_name, join_flag, args|
   it 'properly launches consul agent' do
     members = []
@@ -53,13 +110,16 @@ describe AutoConsul::Runner::AgentProcess do
     before do
       # This sucks, but what are you gonna do?  It needs to be in a separate
       # thread so the waitpid2 call doesn't block the main process.
-      subject.should_receive(:spawn).with(['consul', 'agent'] + args).and_return(pid)
+      subject.should_receive(:spawn).with(*(['consul', 'agent'] + args)).and_return(pid)
       process_status = double('ProcessStatus', :pid => pid,
                                                :exitstatus => exit_code)
       Process.should_receive(:waitpid2).with(pid).and_return([pid, process_status])
       Thread.should_receive(:new) do |&block|
         # The status should be :starting before invoking the thread.
         expect(subject.status).to eq(:starting)
+        # Make sure we set abort_on_exception on the thread.
+        Thread.should_receive(:current).with.and_return(thread)
+        thread.should_receive(:abort_on_exception=).with(true)
         block.call
         # The block is what moves it to a status of :down.
         # And sets the pid and exit code.
@@ -77,6 +137,21 @@ describe AutoConsul::Runner::AgentProcess do
       expect(subject.exit_code).to be_nil
       subject.launch!
       expect(subject.thread).to be(thread)
+    end
+
+    it 'should invoke "agent consul" and run callbacks after going down.' do
+      subject.on_down do |x|
+        x.down_a!
+      end
+
+      subject.on_down do |x|
+        x.down_b!
+      end
+
+      subject.should_receive(:down_a!).with
+      subject.should_receive(:down_b!).with
+
+      subject.launch!
     end
 
     # it should blow up if called with status other than nil, :down.
@@ -157,6 +232,72 @@ describe AutoConsul::Runner::AgentProcess do
       # it should blow up if called with status other than :starting, :up
     end
   end
+
+  describe 'stop! method' do
+    describe 'with a pid' do
+      let(:pid) { double("AgentPid") }
+      before { subject.stub(:pid).and_return(pid) }
+
+      describe 'in nil status' do
+        # Need an expression so compiler doesn't ignore the block
+        let(:initial_status) { nil && true }
+        it_behaves_like 'stop signaler'
+      end
+
+      describe 'in :starting status' do
+        let(:initial_status) { :starting.to_sym }
+        it_behaves_like 'stop signaler'
+      end
+
+      describe 'in :up status' do
+        let(:initial_status) { :up.to_sym }
+        it_behaves_like 'stop signaler'
+      end
+
+      describe 'in :stopping status' do
+        let(:initial_status) { :stopping.to_sym }
+        it_behaves_like 'stop signaler'
+      end
+
+      describe 'in :down status' do
+        let(:initial_status) { :down.to_sym }
+        it_behaves_like 'an unstoppable'
+      end
+    end
+
+    describe 'with no pid' do
+      before do
+        subject.stub(:pid).and_return(nil)
+      end
+
+      describe 'in nil status' do
+        # Need an expression so compiler doesn't ignore the block
+        let(:initial_status) { nil && true }
+        it_behaves_like 'an unstoppable'
+      end
+
+      describe 'in :starting status' do
+        let(:initial_status) { :starting.to_sym }
+        it_behaves_like 'an unstoppable'
+      end
+
+      describe 'in :up status' do
+        let(:initial_status) { :up.to_sym }
+        it_behaves_like 'an unstoppable'
+      end
+
+      describe 'in :stopping status' do
+        let(:initial_status) { :stopping.to_sym }
+        it_behaves_like 'an unstoppable'
+      end
+
+      describe 'in :down status' do
+        let(:initial_status) { :down.to_sym }
+        it_behaves_like 'an unstoppable'
+      end
+    end
+  end
+
 end
 
 describe AutoConsul::Runner do
