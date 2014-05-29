@@ -12,7 +12,7 @@ end
 
 class Command < OpenStruct
   def local
-    @local ||= AutoConsul::Local.bind_to_path(data)
+    @local ||= AutoConsul::Local.bind_to_path(data_dir)
   end
 
   def cluster
@@ -42,6 +42,19 @@ class Command < OpenStruct
     runner = :server_runner if local.server?
     runner = AutoConsul::Runner.method(runner)
     monitor = runner.call(node, addr, expiry, local, cluster)
+    if with_heartbeat and ticks > 0
+      monitor.while_up do |ap|
+        # There's data exchange with the agent and with the registries
+        # per heartbeat, which with Ruby's memory management could cause
+        # process bloat over a long time.  So fork per heartbeat so we
+        # can avoid the bloat in the long-running process.
+        while true
+          sleep ticks
+          kid = fork { do_heartbeat }
+          Process.waitpid kid
+        end
+      end
+    end
     monitor.run!
     # Returns the exit status of the "consul agent" run.
     monitor.wait
@@ -69,10 +82,12 @@ class Command < OpenStruct
   end
 end
 
-runner = Command.new(:data    => '/tmp/consul/state',
+runner = Command.new(:data_dir => '/tmp/consul/state',
                      :dc      => 'dc1',
+                     :with_heartbeat => false,
                      :expiry  => 120,
                      :servers => 1,
+                     :ticks   => 60,
                      :node    => Socket.gethostname.split('.', 2)[0])
 
 parser = OptionParser.new do |opts|
@@ -96,6 +111,11 @@ parser = OptionParser.new do |opts|
 
   opts.on("-e", "--expiry SECONDS", Integer, "The expiration time (in seconds) for registry heartbeats") do |e|
     runner.expiry = e.to_i
+  end
+
+  opts.on("-t", "--ticks SECONDS", Integer, "The time between heartbeats (in seconds) for registry heartbeats; use of this activates a concurrent heartbeat thread for the 'run' command.") do |t|
+    runner.ticks = t.to_i
+    runner.with_heartbeat = true
   end
 
   opts.on("-s", "--servers NUMBER", Integer, "The desired number of consul servers.") do |s|
