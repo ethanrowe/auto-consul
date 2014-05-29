@@ -86,6 +86,14 @@ module AutoConsul
         exit_code
       end
 
+      def while_up &action
+        on_up do |obj|
+          thread = Thread.new { action.call obj }
+          obj.on_stopping {|x| thread.kill }
+          obj.on_down {|x| thread.kill }
+        end
+      end
+
       def run_callbacks on_status
         if callbacks = @callbacks[on_status]
           callbacks.each do |callback|

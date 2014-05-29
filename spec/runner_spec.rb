@@ -322,6 +322,50 @@ describe AutoConsul::Runner::AgentProcess do
       expect { subject.wait }.to raise_exception(/consul agent has not started/)
     end
   end
+
+  describe '#while_up method' do
+    let(:thread) { double('Thread') }
+    # Use this as the while_up block; it will verify that the block is invoked with
+    # the AgentProcess instance as sole parameter.
+    let(:action) { Proc.new {|o| expect(o).to be(subject)} }
+
+    describe 'when brought up' do
+      before do
+        # This "brings it up."
+        expect(subject).to receive(:on_up).and_yield(subject)
+
+        # And this happens in the on_up callback
+        expect(Thread).to receive(:new) do |&blk|
+          blk.call
+          thread
+        end
+      end
+
+      it 'registers an on_stopping that kills the thread for the given block' do
+        expect(thread).to receive(:kill).with
+        expect(subject).to receive(:on_stopping).and_yield(subject)
+        subject.while_up &action
+      end
+
+      it 'registers an on_down that kills the thread for the given block' do
+        expect(thread).to receive(:kill).with
+        expect(subject).to receive(:on_down).and_yield(subject)
+        subject.while_up &action
+      end
+    end
+
+    describe 'when never brought up' do
+      it 'never registers on_stopping or on_down handlers' do
+        expect(Thread).to_not receive(:new)
+        expect(thread).to_not receive(:kill)
+        expect(subject).to_not receive(:on_stopping)
+        expect(subject).to_not receive(:on_down)
+        # We receive it but we're not running anything.
+        expect(subject).to receive(:on_up)
+        subject.while_up &action
+      end
+    end
+  end
 end
 
 describe AutoConsul::Runner do
