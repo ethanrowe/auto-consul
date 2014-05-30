@@ -22,7 +22,7 @@ necessary.)
 Then, run the agent via auto-consul:
 
     auto-consul -r s3://my-bucket/consul/test-cluster \
-                -a 192.168.50.101 \
+                -a 192.168.50.100 \
                 -n agent1 \
                 -t 60 \
                 run
