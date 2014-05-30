@@ -14,9 +14,63 @@ Export your AWS keys into the environment in each:
     export AWS_SECRET_ACCESS_KEY=...
     ```
 
-This will allow the AWS SDK to pick them up.
+This will allow the AWS SDK to pick them up.  (Note that on an EC2
+instance, the AWS SDK should seamlessly pick up any IAM roles associated
+with the instance, so these environment variables should not be
+necessary.)
 
-The server, screen A:
+Then, run the agent via auto-consul:
+
+    auto-consul -r s3://my-bucket/consul/test-cluster \
+                -a 192.168.50.101 \
+                -n agent1 \
+                -t 60 \
+                run
+
+This will launch the consul agent, and emit heartbeats roughly every
+minute.  The `-r` indicates the bucket to use as the heartbeat registry.
+The `-t` specifies the interval in seconds between heartbeats.  The
+`-a` and `-n` options map to consul's native `-bind` and `-node` options,
+respectively.
+
+Because this is the first server, there will be no extant heartbeats in the
+bucket (assuming a fresh bucket/key combination) at startup.  Therefore,
+the agent will be launched in server mode, along with the bootstrap option
+to initialize the raft cluster for state management.
+
+Look in the S3 bucket above, under "servers", and you should see
+a timestamped entry like "20140516092731-server1".  This is produced
+by the "heartbeat" command and allows new agents to discover active
+members of the cluster for joining.
+
+Having seen the server heartbeat, go to the agent vagrant box, and
+do something similar.
+
+    auto-consul -r s3://my-bucket/consul/test-cluster \
+                -a 192.168.50.101 \
+                -n agent1 \
+                -t 60 \
+                run
+
+In this case, the agent will discover the server via its heartbeat.  It
+will know that we have enough servers (it defaults to only wanting one;
+that's fine for dev/testing but not good for availability) and thus
+simply join as a normal agent.
+
+While the server sends heartbeats both to "servers" and "agents" in the
+bucket, the normal agent sends heartbeats only to "agents".
+
+## Alternative - separate heartbeat
+
+The auto-consul runner does not have to issue heartbeats itself; those
+can be left out entirely (but please understand this means automatic
+mode determination won't work), or run in a separate process with timing
+under more precise control.
+
+For example, in our vagrant both, the following commands are equivalent
+to the original server run.
+
+Server screen A:
 
     auto-consul -r s3://my-bucket/consul/test-cluster \
                 -a 192.168.50.100 \
@@ -35,43 +89,6 @@ Then, server screen B:
 
 The first launches the agent, the latter checks its run status and
 issues a heartbeat to the specified S3 bucket.
-
-Because this is the first server, there will be no heartbeats in the
-bucket (assuming a fresh bucket/key combination).  Therefore, the agent
-will be launched in server mode, along with the bootstrap option to
-initialize the raft cluster for state management.
-
-Look in the S3 bucket above, under "servers", and you should see
-a timestamped entry like "20140516092731-server1".  This is produced
-by the "heartbeat" command and allows new agents to discover active
-members of the cluster for joining.
-
-Having seen the server heartbeat, go to the agent vagrant box, and
-do something similar.  Screen A:
-
-    auto-consul -r s3://my-bucket/consul/test-cluster \
-                -a 192.168.50.101 \
-                -n agent1 \
-                run
-
-In this case, the agent will discover the server via its heartbeat.  It
-will know that we have enough servers (it defaults to only wanting one;
-that's fine for dev/testing but not good for availability) and thus
-simply join as a normal agent.
-
-Screen B:
-
-    while true; do
-        auto-consul -r s3://my-bucket/consul/test-cluster \
-                    -a 192.168.50.101 \
-                    -n agent1 \
-                    heartbeat
-        sleep 60
-    done
-
-This generates heartbeats like the server did, but while the server
-sends heartbeats both to "servers" and "agents" in the bucket, the
-normal agent sends heartbeats only to "agents".
 
 # Mode determination
 
@@ -103,17 +120,12 @@ Each heartbeat tells us:
 - The timestamp of the heartbeat (the freshness)
 - The IP at which the node can be reached for cluster join operations.
 
-For now, it is necessary to run the heartbeat utility in parallel to the
-run utility.  In subsequent work we may want to have these things coordinated
-by one daemon, but given the experimental nature of this project it's not
-worth caring about just yet.
-
 The heartbeat asks consul for its status and from that determines if it
 is running as a server or regular agent (or if it is running at all).  If
 consul is not running at all, no heartbeat will be emitted.
 
 The default expiry is 120 seconds.  It is recommended that heartbeats fire
-at half that duration (60 seconds).
+at half that duration (60 seconds) or less.
 
 # Cluster join
 
