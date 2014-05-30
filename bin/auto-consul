@@ -12,7 +12,7 @@ end
 
 class Command < OpenStruct
   def local
-    @local ||= AutoConsul::Local.bind_to_path(data)
+    @local ||= AutoConsul::Local.bind_to_path(data_dir)
   end
 
   def cluster
@@ -25,6 +25,8 @@ class Command < OpenStruct
 
   def do_set_mode
     cluster.set_mode! local, expiry, servers
+    # Healthy exit
+    0
   end
 
   def do_run
@@ -36,16 +38,37 @@ class Command < OpenStruct
 
   def do_direct_run
     runner = :no_op
-    runner = :run_agent! if local.agent?
-    runner = :run_server! if local.server?
+    runner = :agent_runner if local.agent?
+    runner = :server_runner if local.server?
     runner = AutoConsul::Runner.method(runner)
-    runner.call node, addr, expiry, local, cluster
+    monitor = runner.call(node, addr, expiry, local, cluster)
+    if with_heartbeat and ticks > 0
+      monitor.while_up do |ap|
+        # There's data exchange with the agent and with the registries
+        # per heartbeat, which with Ruby's memory management could cause
+        # process bloat over a long time.  So fork per heartbeat so we
+        # can avoid the bloat in the long-running process.
+        while true
+          sleep ticks
+          kid = fork { do_heartbeat }
+          Process.waitpid kid
+        end
+      end
+    end
+    monitor.run!
+    # Returns the exit status of the "consul agent" run.
+    monitor.wait
   end
 
   def do_heartbeat
     if state.running?
       cluster.servers.heartbeat! node, addr, expiry if state.server?
       cluster.agents.heartbeat! node, addr, expiry if state.agent?
+      # Healthy exit.
+      0
+    else
+      # Not running; can't heartbeat.
+      1
     end
   end
 
@@ -59,10 +82,12 @@ class Command < OpenStruct
   end
 end
 
-runner = Command.new(:data    => '/tmp/consul/state',
+runner = Command.new(:data_dir => '/tmp/consul/state',
                      :dc      => 'dc1',
+                     :with_heartbeat => false,
                      :expiry  => 120,
                      :servers => 1,
+                     :ticks   => 60,
                      :node    => Socket.gethostname.split('.', 2)[0])
 
 parser = OptionParser.new do |opts|
@@ -88,6 +113,11 @@ parser = OptionParser.new do |opts|
     runner.expiry = e.to_i
   end
 
+  opts.on("-t", "--ticks SECONDS", Integer, "The time between heartbeats (in seconds) for registry heartbeats; use of this activates a concurrent heartbeat thread for the 'run' command.") do |t|
+    runner.ticks = t.to_i
+    runner.with_heartbeat = true
+  end
+
   opts.on("-s", "--servers NUMBER", Integer, "The desired number of consul servers.") do |s|
     runner.servers = s.to_i
   end
@@ -101,7 +131,8 @@ end
 parser.parse!
 
 begin
-  runner.execute(ARGV.shift)
+  status = runner.execute(ARGV.shift)
+  exit status
 rescue UnknownCommandException => e
   puts e.message
   puts parser
