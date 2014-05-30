@@ -1,3 +1,5 @@
+require 'thread'
+
 module AutoConsul
   module Runner
     INITIAL_VERIFY_SLEEP = 0.1
@@ -10,6 +12,8 @@ module AutoConsul
       attr_reader :pid
       attr_reader :status
       attr_reader :thread
+      attr_reader :stop_queue
+      attr_reader :stop_thread
 
       def initialize args
         @args = args.dup.freeze
@@ -33,10 +37,29 @@ module AutoConsul
       end
 
       def run_agent
-        @pid = spawn(*(['consul', 'agent'] + args))
+        handle_signals!
+        @pid = spawn(*(['consul', 'agent'] + args), :pgroup => true)
         result = Process.waitpid2(@pid)
         @exit_code = result[1].exitstatus
         set_status :down
+      end
+
+      def handle_signals!
+        if @stop_queue.nil?
+          @stop_queue = Queue.new
+          @stop_thread = Thread.new do
+            while true
+              @stop_queue.pop
+              stop!
+            end
+          end
+          ['INT', 'TERM'].each do |sig|
+            Signal.trap(sig) do
+              @stop_queue << sig
+            end
+          end
+        end
+        nil
       end
 
       VALID_VERIFY_STATUSES = [nil, :starting]

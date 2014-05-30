@@ -101,15 +101,67 @@ describe AutoConsul::Runner::AgentProcess do
 
   subject { AutoConsul::Runner::AgentProcess.new args }
 
+  describe "#handle_signals!" do
+    let(:stop_thread) { double('StopThread', :block => Proc.new { raise 'Loop breakout bogus' }) }
+    let(:stop_queue) { [] }
+
+    before do
+      count = 0
+      # This is necessary to capture the block given to the thread,
+      # and to ensure it only happens once.
+      expect(Thread).to receive(:new) do |&block|
+        expect(count).to eq(0)
+        count += 1
+        stop_thread.stub(:block).and_return block
+      end
+      expect(Queue).to receive(:new).with.once.and_return(stop_queue)
+    end
+
+    it 'should register a queuing signal handler for SIGINT, SIGTERM' do
+      seen = {}
+      expect(Signal).to receive(:trap).exactly(2).times do |sig, &block|
+        seen[sig] = true
+        len = stop_queue.size
+        block.call
+        expect(stop_queue.size).to eq(len + 1)
+        expect(stop_queue[-1]).to eq(sig)
+      end
+      subject.handle_signals!
+      expect(seen).to eq({"INT" => true, "TERM" => true})
+    end
+
+    it 'should issue stop per queue member' do
+      Signal.stub(:trap)
+      subject.handle_signals!
+      sigs = ['INT', 'TERM', 'INT']
+      expect(stop_queue).to receive(:pop).exactly(sigs.size + 1).times do
+        raise 'Loop breakout' unless sigs.size > 0
+        sigs.pop
+      end
+      expect(subject).to receive(:stop!).with.exactly(3).times
+      expect { stop_thread.block.call }.to raise_exception(/Loop breakout/) 
+    end
+
+    it 'should only configure signals once' do
+      expect(Signal).to receive(:trap).exactly(2).times
+      subject.handle_signals!
+      subject.handle_signals!
+    end
+  end
+
   describe "launch! method" do
     let(:thread) { double('AgentThread') }
     let(:pid) { double('AgentPid') }
     let(:exit_code) { 2.to_i }
 
     before do
+      # We'll have the AgentProcess take over signal handling, since it's
+      # bound up in the life cycle of the process.
+      subject.should_receive(:handle_signals!).with.once
+
       # This sucks, but what are you gonna do?  It needs to be in a separate
       # thread so the waitpid2 call doesn't block the main process.
-      subject.should_receive(:spawn).with(*(['consul', 'agent'] + args)).and_return(pid)
+      subject.should_receive(:spawn).with(*(['consul', 'agent'] + args), :pgroup => true).and_return(pid)
       process_status = double('ProcessStatus', :pid => pid,
                                                :exitstatus => exit_code)
       Process.should_receive(:waitpid2).with(pid).and_return([pid, process_status])
