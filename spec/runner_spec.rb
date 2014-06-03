@@ -88,7 +88,10 @@ shared_examples_for 'a consul agent process runner' do |method_name, registry_na
     end
 
     callable = AutoConsul::Runner.method(method_name)
-    expect(callable.call(identity, ip, expiry, local_state, registry)).to be(runner)
+
+    args = [identity, ip, expiry, local_state, registry]
+    args << {:advertise => advertise_ip} unless advertise_ip.nil?
+    expect(callable.call(*args)).to be(runner)
   end
 end
 
@@ -420,8 +423,11 @@ describe AutoConsul::Runner::AgentProcess do
   end
 end
 
+ADVERTISE_IP = "172.17.0.31"
+
 describe AutoConsul::Runner do
   let(:ip) { "192.168.50.101" }
+  let(:advertise_ip) { nil && :foo }
   let(:remote_ip) { "192.168.50.102" }
   let(:member) { double("ClusterMember", :identity => 'foo', :time => double, :data => remote_ip) }
   let(:agents_list) { [] }
@@ -440,20 +446,41 @@ describe AutoConsul::Runner do
   end
 
   describe :agent_runner do
-    it_behaves_like 'a consul agent process runner', :agent_runner, :agents, true, []
+    describe 'with no advertise IP' do
+      it_behaves_like 'a consul agent process runner', :agent_runner, :agents, true, []
+    end
+
+    describe 'with an advertise IP' do
+        let(:advertise_ip) { ADVERTISE_IP }
+      it_behaves_like 'a consul agent process runner', :agent_runner, :agents, true, ['-advertise', ADVERTISE_IP]
+    end
   end
 
   describe :server_runner do
     describe 'with empty server registry' do
-      # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -server -bootstrap
-      it_behaves_like 'a consul agent process runner', :server_runner, :servers, false, ['-server', '-bootstrap']
+      describe 'with no advertise IP' do
+        # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -server -bootstrap
+        it_behaves_like 'a consul agent process runner', :server_runner, :servers, false, ['-server', '-bootstrap']
+      end
+
+      describe 'with an advertise IP' do
+        let(:advertise_ip) { ADVERTISE_IP }
+        # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -advertise 172.17.0.31 -server -bootstrap
+        it_behaves_like 'a consul agent process runner', :server_runner, :servers, false, ['-server', '-bootstrap', '-advertise', ADVERTISE_IP]
+      end
     end
 
     describe 'with other servers in registry' do
-      # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -server
-      # consul join some_ip
+      describe 'and no advertise IP' do
+        # consul agent -bind 192.168.50.100 -data-dir /opt/consul/server/data -node vagrant-server -server
+        # consul join some_ip
+        it_behaves_like 'a consul agent process runner', :server_runner, :servers, true, ['-server']
+      end
 
-      it_behaves_like 'a consul agent process runner', :server_runner, :servers, true, ['-server']
+      describe 'and an advertise IP' do
+        let(:advertise_ip) { ADVERTISE_IP }
+        it_behaves_like 'a consul agent process runner', :server_runner, :servers, true, ['-server', '-advertise', ADVERTISE_IP]
+      end
     end
   end
 end
