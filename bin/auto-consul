@@ -23,6 +23,14 @@ class Command < OpenStruct
     @state ||= AutoConsul::RunState::CLIProvider.new
   end
 
+  def heartbeat_addr
+    if advertise.nil?
+      bind
+    else
+      advertise
+    end
+  end
+
   def do_set_mode
     cluster.set_mode! local, expiry, servers
     # Healthy exit
@@ -41,7 +49,9 @@ class Command < OpenStruct
     runner = :agent_runner if local.agent?
     runner = :server_runner if local.server?
     runner = AutoConsul::Runner.method(runner)
-    monitor = runner.call(node, addr, expiry, local, cluster)
+    opt = {}
+    opt[:advertise] = advertise if ! advertise.nil?
+    monitor = runner.call(node, bind, expiry, local, cluster, opt)
     if with_heartbeat and ticks > 0
       monitor.while_up do |ap|
         # There's data exchange with the agent and with the registries
@@ -62,8 +72,8 @@ class Command < OpenStruct
 
   def do_heartbeat
     if state.running?
-      cluster.servers.heartbeat! node, addr, expiry if state.server?
-      cluster.agents.heartbeat! node, addr, expiry if state.agent?
+      cluster.servers.heartbeat! node, heartbeat_addr, expiry if state.server?
+      cluster.agents.heartbeat! node, heartbeat_addr, expiry if state.agent?
       # Healthy exit.
       0
     else
@@ -82,7 +92,9 @@ class Command < OpenStruct
   end
 end
 
-runner = Command.new(:data_dir => '/tmp/consul/state',
+runner = Command.new(:advertise => nil,
+                     :bind      => "0.0.0.0",
+                     :data_dir => '/tmp/consul/state',
                      :dc      => 'dc1',
                      :with_heartbeat => false,
                      :expiry  => 120,
@@ -102,7 +114,15 @@ parser = OptionParser.new do |opts|
   end
 
   opts.on("-a", "--address IPADDR", String, "The IP address to bind to and announce for cluster communication.") do |a|
-    runner.addr = a
+    runner.advertise = runner.bind = a
+  end
+
+  opts.on("--advertise IPADDR", String, "The IP address to advertise for cluster communication.  Must be routable.  Defaults to the bound address.") do |a|
+    runner.advertise = a
+  end
+
+  opts.on("-b", "--bind IPADDR", String, "The IP address to bind to for cluster communication.  Defaults to 0.0.0.0, which consul handles specially.") do |a|
+    runner.bind = a
   end
 
   opts.on("-n", "--node NAME", String, "The unique name by which the node identifies itself within the cluster.") do |n|
