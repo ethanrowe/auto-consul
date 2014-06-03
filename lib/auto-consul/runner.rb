@@ -132,10 +132,12 @@ module AutoConsul
       end
     end
 
-    def self.joining_runner(agent_args, remote_ip=nil)
-      runner = AgentProcess.new(agent_args)
-      if not remote_ip.nil?
-        runner.on_up {|a| join remote_ip}
+    def self.joining_runner(agent_args, opt={})
+      opt_args = []
+      opt_args += ['-advertise', opt[:advertise]] if ! opt[:advertise].nil?
+      runner = AgentProcess.new(agent_args + opt_args)
+      if not opt[:remote_ip].nil?
+        runner.on_up {|a| join opt[:remote_ip]}
       end
       runner
     end
@@ -157,21 +159,21 @@ module AutoConsul
       hosts[0].data
     end
 
-    def self.agent_runner identity, bind_ip, expiry, local_state, registry
-      remote_ip = pick_joining_host(registry.agents.members(expiry))
+    def self.agent_runner identity, bind_ip, expiry, local_state, registry, opt={}
+      opt[:remote_ip] = pick_joining_host(registry.agents.members(expiry))
       joining_runner(['-bind', bind_ip,
                       '-data-dir', local_state.data_path,
-                      '-node', identity], remote_ip)
+                      '-node', identity], opt)
     end
 
-    def self.server_runner identity, bind_ip, expiry, local_state, registry
+    def self.server_runner identity, bind_ip, expiry, local_state, registry, opt={}
       members = registry.servers.members(expiry)
-      remote_ip = members.size > 0 ? pick_joining_host(members) : nil
+      opt[:remote_ip] = members.size > 0 ? pick_joining_host(members) : nil
 
       args = ['-bind', bind_ip, '-data-dir', local_state.data_path, '-node', identity, '-server']
       args << '-bootstrap' if members.size < 1
 
-      joining_runner(args, remote_ip)
+      joining_runner(args, opt)
     end
   end
 end
