@@ -11,6 +11,15 @@ class UnknownCommandException < Exception
 end
 
 class Command < OpenStruct
+  HELP = {
+    "set_mode"   => "Dynamically determines the mode from the registry and parameters, and sets it (for next startup).",
+    "set_server" => "Sets the mode (for next startup) to server.",
+    "set_agent"  => "Sets the mode (for next startup) to agent.",
+    "run"        => "Runs consul agent, dynamically determining the mode, with heartbeat if appropriate.",
+    "direct_run" => "Runs consul agent, with no mode determination, with heartbeat if appropriate.",
+    "heartbeat"  => "Runs heartbeat process, ticking to the registry at specified interval",
+  }
+
   def local
     @local ||= AutoConsul::Local.bind_to_path(data_dir)
   end
@@ -94,6 +103,13 @@ class Command < OpenStruct
     end
   end
 
+  def self.commands
+    cmds = instance_methods.collect {|m| m.to_s}.find_all {|m| m[0..2] == 'do_'}.collect {|n| n[3..-1]}
+    cmds.collect do |name|
+      [name, HELP[name] || '']
+    end
+  end
+
   def execute cmd
     command = "do_#{cmd}".to_sym
     if respond_to? command
@@ -154,9 +170,17 @@ parser = OptionParser.new do |opts|
     runner.servers = s.to_i
   end
 
-  opts.on_tail('-h', '--help', "Show this help message.") do
+  opts.on('-h', '--help', "Show this help message.") do
     puts opts
     exit
+  end
+
+  opts.separator ''
+  opts.separator 'Commands:'
+  Command.commands.sort.each do |name, help|
+    opts.separator ''
+    opts.separator "    #{name}"
+    opts.separator "        #{help}" if help.size > 0
   end
 end
 
