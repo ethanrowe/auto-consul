@@ -31,6 +31,18 @@ class Command < OpenStruct
     end
   end
 
+  def do_set_server
+    puts "Setting to server mode."
+    local.set_server!
+    0
+  end
+
+  def do_set_agent
+    puts "Setting to agent mode."
+    local.set_agent!
+    0
+  end
+
   def do_set_mode
     cluster.set_mode! local, expiry, servers
     # Healthy exit
