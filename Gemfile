@@ -1,5 +1,6 @@
 source 'https://rubygems.org'
 
+gem 'aws-sdk-v1'
 gem 'aws-sdk'
 
 group :development do

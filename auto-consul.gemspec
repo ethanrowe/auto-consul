@@ -13,8 +13,8 @@ Gem::Specification.new do |s|
   s.files       = FileList['lib/**/*.rb', 'spec/**/*.rb', 'bin/*', '[A-Z]*'].to_a
   s.executables << 'auto-consul'
 
-  s.add_dependency('aws-sdk')
-
+  s.add_dependency('aws-sdk'   , '~> 2')
+  s.add_dependency('aws-sdk-v1', '~> 1')
   s.add_development_dependency('bundler')
   s.add_development_dependency('rake')
   s.add_development_dependency('rspec')
