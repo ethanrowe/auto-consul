@@ -72,6 +72,7 @@ class Command < OpenStruct
     runner = AutoConsul::Runner.method(runner)
     opt = {}
     opt[:advertise] = advertise if ! advertise.nil?
+    opt[:config_dir] = config_dir if ! config_dir.nil?
     monitor = runner.call(node, bind, expiry, local, cluster, opt)
     if with_heartbeat and ticks > 0
       monitor.while_up do |ap|
@@ -132,6 +133,10 @@ runner = Command.new(:advertise => nil,
 
 parser = OptionParser.new do |opts|
   opts.banner = "Usage: auto-consul [options] COMMAND"
+
+  opts.on("-c", "--config-dir CONFIGDIR", String, "The Configuration Directory") do |c|
+    runner.config_dir = c
+  end
 
   opts.on("-r", "--registry URL", String, "The cluster registry URL") do |u|
     runner.registry = u

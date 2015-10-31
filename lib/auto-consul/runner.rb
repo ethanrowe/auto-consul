@@ -161,9 +161,9 @@ module AutoConsul
 
     def self.agent_runner identity, bind_ip, expiry, local_state, registry, opt={}
       opt[:remote_ip] = pick_joining_host(registry.agents.members(expiry))
-      joining_runner(['-bind', bind_ip,
-                      '-data-dir', local_state.data_path,
-                      '-node', identity], opt)
+      args = ['-bind', bind_ip, '-data-dir', local_state.data_path, '-node', identity]
+      args += ['-config-dir', opt[:config_dir]] if ! opt[:config_dir].nil?
+      joining_runner(args, opt)
     end
 
     def self.server_runner identity, bind_ip, expiry, local_state, registry, opt={}
@@ -171,6 +171,7 @@ module AutoConsul
       opt[:remote_ip] = members.size > 0 ? pick_joining_host(members) : nil
 
       args = ['-bind', bind_ip, '-data-dir', local_state.data_path, '-node', identity, '-server']
+      args += ['-config-dir', opt[:config_dir]] if ! opt[:config_dir].nil?
       args << '-bootstrap' if members.size < 1
 
       joining_runner(args, opt)
